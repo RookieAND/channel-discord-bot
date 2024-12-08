@@ -1,0 +1,32 @@
+{
+  "name": "discord-with-sapphire",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@sapphire/decorators": "^6.1.1",
+    "@sapphire/discord.js-utilities": "^7.3.1",
+    "@sapphire/framework": "^5.3.1",
+    "discord.js": "^14.16.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@sapphire/plugin-hmr": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "format": "biome format --write ./src",
+    "lint": "biome lint --write ./src",
+    "start": "tsup-node ./src --watch --onSuccess \"node dist/index.js\""
+  }
+}
