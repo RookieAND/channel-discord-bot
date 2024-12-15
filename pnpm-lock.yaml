@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@sapphire/cron':
+        specifier: ^1.2.1
+        version: 1.2.1
       '@sapphire/decorators':
         specifier: ^6.1.1
         version: 6.1.1
@@ -15,23 +18,32 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@sapphire/framework':
-        specifier: ^5.3.1
+        specifier: ^5
         version: 5.3.1
+      '@sapphire/plugin-subcommands':
+        specifier: ^7.0.1
+        version: 7.0.1
+      '@sapphire/utilities':
+        specifier: ^3.18.1
+        version: 3.18.1
       discord.js:
-        specifier: ^14.16.3
+        specifier: ^14
         version: 14.16.3
+      es-toolkit:
+        specifier: ^1.30.1
+        version: 1.30.1
     devDependencies:
       '@biomejs/biome':
         specifier: 1.9.4
         version: 1.9.4
       dotenv:
-        specifier: ^16.4.7
+        specifier: ^16
         version: 16.4.7
       tsc-watch:
         specifier: ^6.2.1
         version: 6.2.1(typescript@5.7.2)
       typescript:
-        specifier: ^5.7.2
+        specifier: ^5
         version: 5.7.2
 
 packages:
@@ -121,6 +133,10 @@ packages:
     resolution: {integrity: sha512-cvGzxbba6sav2zZkH8GPf2oGk9yYoD5qrNWdu9fRehifgnFZJMV+nuy2nON2roRO4yQQ+v7MK/Pktl/HgfsUXg==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
 
+  '@sapphire/cron@1.2.1':
+    resolution: {integrity: sha512-K96GX4UkzgC/Y2VHXVjhM2Bl4D04552nr/fDiOj9bOACW1+wqeFfLJ3eV6jleTSXmzPIwDvkPIUJLf8A5KSD+w==}
+    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
   '@sapphire/decorators@6.1.1':
     resolution: {integrity: sha512-slUP6KauUC1wRcBcT0Ke7Fva2AGVAmX9/ZgE0K15Jzd0S3v2ggleECayFTWOjql5sZDS5x6mYtpIAxmuRkqE8Q==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
@@ -148,6 +164,10 @@ packages:
   '@sapphire/pieces@4.3.1':
     resolution: {integrity: sha512-t42o6i8gPQ3QISIsMl463hj057yfyHsaSrs4FssdiGLmnvL9cuLGLTsjGEPn904wHUhPzS8W5aAPr788RK2/jQ==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
+  '@sapphire/plugin-subcommands@7.0.1':
+    resolution: {integrity: sha512-3ngUpfKfcMX4zIlJ4SHLe10N79XU72H+Wdfcnd9ueMf6FOSMJFvVUfqDIp1rb7/iXi7C5dfx0pQqSwqu3UG0KQ==}
+    engines: {node: '>=v18', npm: '>=7'}
 
   '@sapphire/ratelimits@2.4.11':
     resolution: {integrity: sha512-O6FNA/P0wxU4Ve9gxL948CoZw7+sSpujyUR2CLyLLCNuNvuFGFxPCJVl5crFVLXMIyBIrc2qk+/H9bsqsyQK1Q==}
@@ -206,6 +226,9 @@ packages:
 
   duplexer@0.1.2:
     resolution: {integrity: sha512-jtD6YG370ZCIi/9GTaJKQxWTZD045+4R4hTk/x1UyoqadyJ9x9CgSi1RlVDQF8U2sxLLSnFkCaMihqljHIWgMg==}
+
+  es-toolkit@1.30.1:
+    resolution: {integrity: sha512-ZXflqanzH8BpHkDhFa10bBf6ONDCe84EPUm7SSICGzuuROSluT2ynTPtwn9PcRelMtorCRozSknI/U0MNYp0Uw==}
 
   event-stream@3.3.4:
     resolution: {integrity: sha512-QHpkERcGsR0T7Qm3HNJSyXKEEj8AHNxkY3PK8TS2KJvQ7NiSHe3DDpwVKKtoYprL/AreyzFBeIkBIWChAqn60g==}
@@ -395,6 +418,10 @@ snapshots:
 
   '@sapphire/async-queue@1.5.5': {}
 
+  '@sapphire/cron@1.2.1':
+    dependencies:
+      '@sapphire/utilities': 3.18.1
+
   '@sapphire/decorators@6.1.1':
     dependencies:
       tslib: 2.8.1
@@ -433,6 +460,10 @@ snapshots:
       '@discordjs/collection': 1.5.3
       '@sapphire/utilities': 3.18.1
       tslib: 2.8.1
+
+  '@sapphire/plugin-subcommands@7.0.1':
+    dependencies:
+      '@sapphire/utilities': 3.18.1
 
   '@sapphire/ratelimits@2.4.11': {}
 
@@ -494,6 +525,8 @@ snapshots:
   dotenv@16.4.7: {}
 
   duplexer@0.1.2: {}
+
+  es-toolkit@1.30.1: {}
 
   event-stream@3.3.4:
     dependencies:
