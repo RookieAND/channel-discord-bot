@@ -1,6 +1,7 @@
 import { type ApplicationCommandRegistry, Command } from "@sapphire/framework";
 import { ApplyOptions } from "@sapphire/decorators";
-import { ChannelTypes, isTextChannel } from "@sapphire/discord.js-utilities";
+import { isTextChannel } from "@sapphire/discord.js-utilities";
+import { ChannelType } from "discord.js";
 
 @ApplyOptions<Command.Options>({
 	name: "전체공지",
@@ -20,7 +21,8 @@ export class AnnounceCommand extends Command {
 						option
 							.setName("channel")
 							.setDescription("The channel to send the announcement to")
-							.setRequired(true),
+							.setRequired(true)
+							.addChannelTypes(ChannelType.GuildText),
 					)
 					.addStringOption((option) =>
 						option
