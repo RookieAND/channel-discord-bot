@@ -11,7 +11,7 @@ const client = new SapphireClient({
 	],
 	loadMessageCommandListeners: true,
 });
-
+ 
 async function main() {
 	await client.login(process.env.BOT_TOKEN);
 }
