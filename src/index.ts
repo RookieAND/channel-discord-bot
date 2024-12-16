@@ -1,21 +1,20 @@
-import { SapphireClient } from "@sapphire/framework";
-
-import { GatewayIntentBits } from "discord.js";
 import dotenv from "dotenv";
+import { container } from "@sapphire/framework";
+
+import { RookieDiscordClient } from "./RookieDiscordClient";
 
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
-const client = new SapphireClient({
-	intents: [
-		GatewayIntentBits.MessageContent,
-		GatewayIntentBits.Guilds,
-		GatewayIntentBits.GuildMessages,
-	],
-	loadMessageCommandListeners: true,
-});
- 
-async function main() {
-	await client.login(process.env.BOT_TOKEN);
+const client = new RookieDiscordClient();
+
+async function bootstrap() {
+	try {
+		await client.login(process.env.BOT_TOKEN);
+	} catch (error) {
+		container.logger.error(error);
+		await client.destroy();
+		process.exit(1);
+	}
 }
 
-void main();
+void bootstrap();
