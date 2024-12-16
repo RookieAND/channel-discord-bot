@@ -16,6 +16,7 @@
     "@sapphire/framework": "^5",
     "@sapphire/plugin-subcommands": "^7.0.1",
     "@sapphire/utilities": "^3.18.1",
+    "cron": "^3.3.1",
     "discord.js": "^14",
     "es-toolkit": "^1.30.1"
   },
