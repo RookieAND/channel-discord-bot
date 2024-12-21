@@ -32,7 +32,7 @@ export class AnnounceCommand extends Command {
 					),
 			{
 				guildIds: ["1260871187941163030"],
-				idHints: ["1317877023959679108", "1317877420442910760"],
+				idHints: ["1317877420442910760"],
 			},
 		);
 	}

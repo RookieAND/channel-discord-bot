@@ -1,13 +1,13 @@
 {
-  "name": "discord-with-sapphire",
+  "name": "channel-discord-bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "dist/index.js",
+  "description": "A Discord bot for managing channels.",
+  "main": "dist/index.mjs",
   "files": [
     "dist"
   ],
-  "keywords": [],
-  "author": "",
+  "keywords": ["discord.js"],
+  "author": "RookieAND",
   "license": "ISC",
   "dependencies": {
     "@sapphire/cron": "^1.2.1",
@@ -19,19 +19,19 @@
     "@sapphire/utilities": "^3.18.1",
     "cron": "^3.3.1",
     "discord.js": "^14",
-    "es-toolkit": "^1.30.1"
+    "es-toolkit": "^1.30.1",
+    "mongoose": "^8.9.2"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "dotenv": "^16",
-    "tsc-watch": "^6.2.1",
+    "tsup": "8.3.0",
     "typescript": "^5"
   },
   "scripts": {
-    "build": "tsup",
-    "build:watch": "tsup --watch",
+    "build:dev": "tsup-node",
+    "start:dev": "NODE_ENV=development tsup-node --watch --onSuccess \"node dist/index.mjs\"",
     "format": "biome format --write ./src",
-    "lint": "biome lint --write ./src",
-    "start:dev": "cross-env NODE_ENV=development tsc-watch --outDir ./dist --onSuccess \"node dist/index.js\""
+    "lint": "biome lint --write ./src"
   }
 }
