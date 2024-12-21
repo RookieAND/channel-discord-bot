@@ -23,6 +23,9 @@ importers:
       '@sapphire/plugin-subcommands':
         specifier: ^7.0.1
         version: 7.0.1
+      '@sapphire/time-utilities':
+        specifier: ^1.7.14
+        version: 1.7.14
       '@sapphire/utilities':
         specifier: ^3.18.1
         version: 3.18.1
@@ -190,6 +193,18 @@ packages:
 
   '@sapphire/stopwatch@1.5.4':
     resolution: {integrity: sha512-IVI48D2yAz411bSttXyTkBH0p2vhrXoqWLn5loDDSAAEUGkM1r5KNCX2027ifQ8svdoMkUfIGjFueR+satLeWw==}
+    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
+  '@sapphire/time-utilities@1.7.14':
+    resolution: {integrity: sha512-UVJQ9oyzXcmJVVf9Y9ucGzRmKoPxe6SehpQlBNTX7CTVu0aj1lrEGL+bBa0Mu7hxF5DYXYjDYeO1e5BR0eg90Q==}
+    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
+  '@sapphire/timer-manager@1.0.4':
+    resolution: {integrity: sha512-gc1JW8oui86f2l0T/1Iwd7hZTgus8b46slitTR2y0+wiMAEYxdp6vVTHvMAEHOqX8drkxK70aGfZmQKbAcgFqQ==}
+    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
+  '@sapphire/timestamp@1.0.5':
+    resolution: {integrity: sha512-oNwWyNdbt5wm4aYZvlHl1+64U3g0xrFmRIHsnER7RgMxNnp/wmAE4yTK2oUHeadg3t4V9iYctPAQCF+aINke4g==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
 
   '@sapphire/utilities@3.18.1':
@@ -492,6 +507,17 @@ snapshots:
   '@sapphire/stopwatch@1.5.4':
     dependencies:
       tslib: 2.8.1
+
+  '@sapphire/time-utilities@1.7.14':
+    dependencies:
+      '@sapphire/cron': 1.2.1
+      '@sapphire/duration': 1.1.4
+      '@sapphire/timer-manager': 1.0.4
+      '@sapphire/timestamp': 1.0.5
+
+  '@sapphire/timer-manager@1.0.4': {}
+
+  '@sapphire/timestamp@1.0.5': {}
 
   '@sapphire/utilities@3.18.1': {}
 

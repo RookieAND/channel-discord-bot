@@ -1,10 +1,10 @@
-import type { ScheduleManager } from "#/schedules/managers/ScheduleManager";
+import type { ScheduleRegistry } from "#/schedules/managers/ScheduleRegistry";
 import type { TaskStore } from "#/schedules/structures/TaskStore";
 
 declare module "discord.js" {
 	interface Client {
 		readonly dev: boolean;
-		readonly schedule: ScheduleManager;
+		readonly schedule: ScheduleRegistry;
 	}
 }
 

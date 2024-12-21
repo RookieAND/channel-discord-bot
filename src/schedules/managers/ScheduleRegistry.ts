@@ -1,6 +1,6 @@
 import {
 	type ScheduledTaskData,
-	type ScheduledTaskId,
+	type ScheduledTaskType,
 	ScheduleEntry,
 } from "./ScheduleEntry";
 
@@ -17,19 +17,19 @@ export class ScheduleRegistry {
 	}
 
 	public addTask<
-		TScheduleTaskId extends ScheduledTaskId,
-		TScheduledTaskData extends ScheduledTaskData[TScheduleTaskId],
+		TScheduleTaskType extends ScheduledTaskType,
+		TScheduledTaskData extends ScheduledTaskData[TScheduleTaskType],
 	>(
 		id: number,
-		taskId: TScheduleTaskId,
 		time: Date,
+		taskType: TScheduleTaskType,
 		taskData: TScheduledTaskData,
 	) {
 		if (this.entries.has(id)) {
 			throw new Error(`Task with ID "${id}" already exists.`);
 		}
 
-		const entry = new ScheduleEntry(id, taskId, time, taskData);
+		const entry = new ScheduleEntry({ id, time, taskType, taskData });
 		this.entries.set(id, entry);
 		this._checkInterval();
 	}
