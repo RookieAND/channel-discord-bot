@@ -17,3 +17,12 @@ declare module "@sapphire/pieces" {
 		tasks: TaskStore;
 	}
 }
+
+declare global {
+	namespace NodeJS {
+		interface ProcessEnv {
+			MONGO_URI: string;
+			BOT_TOKEN: string;
+		}
+	}
+}
