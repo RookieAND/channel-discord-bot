@@ -1,9 +1,9 @@
 import { LogLevel } from "@sapphire/framework";
 import {
 	ActivityType,
+	type ClientOptions,
 	GatewayIntentBits,
 	Options,
-	type ClientOptions,
 } from "discord.js";
 
 export const CLIENT_OPTIONS: ClientOptions = {
@@ -19,6 +19,7 @@ export const CLIENT_OPTIONS: ClientOptions = {
 		GatewayIntentBits.GuildMessageReactions,
 	],
 	loadMessageCommandListeners: true,
+	loadScheduledTaskErrorListeners: true,
 	makeCache: Options.cacheEverything(),
 	sweepers: {
 		...Options.DefaultSweeperSettings,
@@ -38,5 +39,14 @@ export const CLIENT_OPTIONS: ClientOptions = {
 	logger: {
 		level:
 			process.env.NODE_ENV === "development" ? LogLevel.Debug : LogLevel.Info,
+	},
+	tasks: {
+		bull: {
+			connection: {
+				port: 6379,
+				host: "localhost",
+				db: 1,
+			},
+		},
 	},
 };

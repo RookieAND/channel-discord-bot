@@ -1,16 +1,25 @@
-import type { ScheduleRegistry } from "#/schedules/managers/ScheduleRegistry";
+import { ScheduledTask } from "@sapphire/plugin-scheduled-tasks";
 import type { TaskStore } from "#/schedules/structures/TaskStore";
+import type { LocalStorage } from "#/storages/local-storage";
+import { ScheduledTaskType } from "#/types/schedule-task.type";
 
 declare module "discord.js" {
 	interface Client {
 		readonly dev: boolean;
-		readonly schedule: ScheduleRegistry;
+		readonly localStorage: LocalStorage;
+	}
+}
+
+declare module "@sapphire/plugin-scheduled-tasks" {
+	interface ScheduledTasks {
+		[ScheduledTaskType.RESERVATION_MESSAGE]: ScheduledTaskData[ScheduledTaskType.RESERVATION_MESSAGE];
+		[ScheduledTaskType.SCHEDULE_MESSAGE]: ScheduledTaskData[ScheduledTaskType.SCHEDULE_MESSAGE];
 	}
 }
 
 declare module "@sapphire/pieces" {
 	interface Container {
-		schedule: ScheduleManager;
+		localStorage: LocalStorage;
 	}
 
 	interface StoreRegistryEntries {

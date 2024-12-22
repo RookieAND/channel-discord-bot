@@ -31,8 +31,7 @@ export class AnnounceCommand extends Command {
 							.setRequired(true),
 					),
 			{
-				guildIds: ["1260871187941163030"],
-				idHints: ["1317877420442910760"],
+				idHints: ["1317877420442910760", "1319921497078239232"],
 			},
 		);
 	}

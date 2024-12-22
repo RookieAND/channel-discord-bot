@@ -1,7 +1,8 @@
-import dotenv from "dotenv";
 import { container } from "@sapphire/framework";
+import dotenv from "dotenv";
 
 import { connectMongoDatabase } from "#/databases/connect-database";
+import "#/setups";
 
 import { RookieDiscordClient } from "./RookieDiscordClient";
 

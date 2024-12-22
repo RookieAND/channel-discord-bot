@@ -1,5 +1,4 @@
 import { defineConfig } from 'tsup';
-import { bootstrap } from './src/index';
 
 export default defineConfig(() => {
 	return {
