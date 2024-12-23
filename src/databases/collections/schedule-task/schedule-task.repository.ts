@@ -2,7 +2,7 @@ import type { Model, ProjectionType } from "mongoose";
 
 import dayjs from "#/utils/dayjs";
 
-import { type ScheduleTask, scheduleTaskModel } from "./ScheduleTask.schema";
+import { type ScheduleTask, scheduleTaskModel } from "./schedule-task.schema";
 
 class ScheduleTaskRepository {
 	private model: Model<ScheduleTask> = scheduleTaskModel;

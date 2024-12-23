@@ -1,2 +1,2 @@
-export type { ScheduleTask } from "./ScheduleTask.schema";
-export { scheduleTaskRepository } from "./ScheduleTask.repository";
+export type { ScheduleTask } from "./schedule-task.schema";
+export { scheduleTaskRepository } from "./schedule-task.repository";

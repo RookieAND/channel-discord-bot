@@ -17,6 +17,8 @@ export const CLIENT_OPTIONS: ClientOptions = {
 		GatewayIntentBits.GuildEmojisAndStickers,
 		GatewayIntentBits.GuildMessages,
 		GatewayIntentBits.GuildMessageReactions,
+		GatewayIntentBits.GuildMessageTyping,
+		GatewayIntentBits.GuildScheduledEvents,
 	],
 	loadMessageCommandListeners: true,
 	loadScheduledTaskErrorListeners: true,

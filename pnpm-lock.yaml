@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@sapphire/cron':
-        specifier: ^1.2.1
-        version: 1.2.1
+      '@discordjs/builders':
+        specifier: ^1.9.0
+        version: 1.9.0
       '@sapphire/decorators':
         specifier: ^6.1.1
         version: 6.1.1
