@@ -1,7 +1,7 @@
 import { ApplyOptions } from "@sapphire/decorators";
 import { isTextChannel } from "@sapphire/discord.js-utilities";
 import { ScheduledTask } from "@sapphire/plugin-scheduled-tasks";
-import { EmbedBuilder, Status } from "discord.js";
+import { Status } from "discord.js";
 import {
 	type ScheduledTaskData,
 	ScheduledTaskType,
@@ -10,7 +10,7 @@ import {
 @ApplyOptions<ScheduledTask.Options>({
 	name: ScheduledTaskType.RESERVATION_MESSAGE,
 })
-export class ReservationScheduledTask extends ScheduledTask<ScheduledTaskType.RESERVATION_MESSAGE> {
+export class ReservationScheduledTask extends ScheduledTask {
 	public async run(
 		payload: ScheduledTaskData[ScheduledTaskType.RESERVATION_MESSAGE],
 	) {
@@ -18,17 +18,21 @@ export class ReservationScheduledTask extends ScheduledTask<ScheduledTaskType.RE
 			return;
 		}
 
-		const { channelList, owner, message } = payload;
+		const { channelList, title, content, mentionRoleList } = payload;
 
 		const sendChannelList = this.container.client.channels.cache.filter(
 			(channel) => channelList.includes(channel.id),
 		);
 
-		const embed = this.createEmbed({ owner, message });
 		for (const channel of sendChannelList.values()) {
 			if (!isTextChannel(channel)) return;
 			try {
-				await channel.send({ embeds: [embed] });
+				const messagePayload = this.createMessageContent(
+					title,
+					content,
+					mentionRoleList,
+				);
+				await channel.send(messagePayload);
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : error;
 				this.container.logger.error(
@@ -38,18 +42,15 @@ export class ReservationScheduledTask extends ScheduledTask<ScheduledTaskType.RE
 		}
 	}
 
-	private createEmbed({
-		owner,
-		message,
-	}: {
-		owner: string;
-		message: string;
-	}) {
-		return new EmbedBuilder()
-			.setTitle("예약된 메시지")
-			.setDescription(message)
-			.setFooter({ text: `보낸 사람: ${owner}` })
-			.setColor("#00AAFF")
-			.setTimestamp();
+	private createMessageContent(
+		title: string,
+		content: string,
+		mentionRoles: string[],
+	) {
+		const stringifiedMentionRoles = mentionRoles.map((role) => `<@${role}>`);
+		const messagePayload = {
+			content: `${title}\n${content}\n${stringifiedMentionRoles}`,
+		};
+		return messagePayload;
 	}
 }

@@ -1,5 +1,4 @@
 import {
-	ApplicationCommandRegistries,
 	SapphireClient,
 	container,
 } from "@sapphire/framework";
@@ -12,10 +11,7 @@ export class RookieDiscordClient extends SapphireClient {
 
 	public constructor() {
 		super(CLIENT_OPTIONS);
-		ApplicationCommandRegistries.setDefaultGuildIds(["1260871187941163030"]);
-
 		this.localStorage = new LocalStorage();
-
 		container.localStorage = this.localStorage;
 	}
 
@@ -25,7 +21,6 @@ export class RookieDiscordClient extends SapphireClient {
 	}
 
 	public override async destroy() {
-		// this.schedule.destroy();
 		return super.destroy();
 	}
 }

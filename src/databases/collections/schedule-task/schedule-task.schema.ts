@@ -6,31 +6,36 @@ import {
 	ScheduledTaskType,
 } from "#/types/schedule-task.type";
 
-export interface ScheduleTask extends Document {
+export interface ScheduleTask<
+	TaskType extends ScheduledTaskType = ScheduledTaskType,
+	TaskData extends ScheduledTaskData[TaskType] = ScheduledTaskData[TaskType],
+> extends Document {
 	time: Date;
 	cronExpression: Cron | null;
-	taskType: ScheduledTaskType;
-	taskData: ScheduledTaskData[ScheduledTaskType];
+	taskType: TaskType;
+	taskData: TaskData;
 }
+
+const collectionName = "schedule-tasks";
 
 export const scheduleTaskSchema = new Schema<ScheduleTask>(
 	{
 		taskType: {
 			type: String,
 			required: true,
-			enum: Object.values(ScheduledTaskType),
+			enum: ScheduledTaskType,
 		},
 		taskData: { type: Object, required: true },
 		cronExpression: { type: String, default: null },
 		time: { type: Date },
 	},
 	{
-		collection: "schedule-tasks",
+		collection: collectionName,
 		timestamps: true,
 	},
 );
 
 export const scheduleTaskModel = model<ScheduleTask>(
-	"schedule-tasks",
+	collectionName,
 	scheduleTaskSchema,
 );

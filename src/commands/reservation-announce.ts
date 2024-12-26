@@ -9,7 +9,8 @@ import {
 } from "@sapphire/framework";
 import { Subcommand } from "@sapphire/plugin-subcommands";
 import dayjs from "dayjs";
-import { hyperlink } from "discord.js";
+import { ChannelSelectMenuBuilder, EmbedBuilder } from "@discordjs/builders";
+import { Colors, GuildChannel, hyperlink, ThreadAutoArchiveDuration } from "discord.js";
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
@@ -18,7 +19,6 @@ import {
 	ChannelType,
 	type ChatInputCommandInteraction,
 	ComponentType,
-	EmbedBuilder,
 	PermissionsBitField,
 	type PrivateThreadChannel,
 	StringSelectMenuBuilder,
@@ -26,8 +26,9 @@ import {
 	type TextChannel,
 	type User,
 } from "discord.js";
-import { delay, isNull, isUndefined } from "es-toolkit";
+import { delay, isUndefined } from "es-toolkit";
 import { RESERVATION } from "#/constants/reservation";
+import { collectMessageComponent, isInteractionFailedError } from "#/utils/prompt";
 
 const TIMEOUT = 30000;
 
@@ -48,7 +49,7 @@ const TIMEOUT = 30000;
 			chatInputRun: "chatInputList",
 		},
 	],
-	preconditions: ["GuildOnly"],
+	preconditions: ["GuildTextOnly"],
 })
 export class ReservationCommand extends Subcommand {
 	public override registerApplicationCommands(
@@ -79,7 +80,7 @@ export class ReservationCommand extends Subcommand {
 							),
 					),
 			{
-				idHints: ["1320295616789741618"],
+				idHints: ["1321801903230943273"],
 			},
 		);
 	}
@@ -88,21 +89,8 @@ export class ReservationCommand extends Subcommand {
 	 * 예약 메시지를 추가합니다.
 	 */
 	public async chatInputAdd(
-		interaction: Subcommand.ChatInputCommandInteraction,
+		interaction: Subcommand.ChatInputCommandInteraction<"cached">,
 	) {
-		if (!interaction.inCachedGuild()) {
-			await interaction.reply({
-				content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-				embeds: [
-					new EmbedBuilder()
-						.setTitle("❌ 길드 전용 명령어")
-						.setDescription("이 명령어는 길드 내에서만 사용할 수 있습니다.")
-						.setColor("Red"),
-				],
-				ephemeral: true,
-			});
-		}
-
 		if (!isTextChannel(interaction.channel)) {
 			await interaction.reply({
 				content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
@@ -110,7 +98,7 @@ export class ReservationCommand extends Subcommand {
 					new EmbedBuilder()
 						.setTitle("❌ 지원되지 않는 채널")
 						.setDescription("이 명령어는 텍스트 채널에서만 사용할 수 있습니다.")
-						.setColor("Red"),
+						.setColor(Colors.Red),
 				],
 				ephemeral: true,
 			});
@@ -120,10 +108,9 @@ export class ReservationCommand extends Subcommand {
 		const user = interaction.user;
 		const thread = await interaction.channel.threads.create({
 			name: `${interaction.user.id}-session`,
-			autoArchiveDuration: 60,
+			autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
 			type: ChannelType.PrivateThread,
 			invitable: false,
-			reason: "사용자 세션 관리",
 		});
 
 		await interaction.reply({
@@ -134,7 +121,7 @@ export class ReservationCommand extends Subcommand {
 					.setDescription(
 						`${hyperlink("개설된 스레드", thread.url)} 내에서 메세지 등록을 진행해주세요.`,
 					)
-					.setColor("Blue"),
+					.setColor(Colors.Blue),
 			],
 			ephemeral: true,
 		});
@@ -142,13 +129,13 @@ export class ReservationCommand extends Subcommand {
 		if (!isPrivateThreadChannel(thread)) return;
 		await thread.members.add(interaction.user.id);
 
-		const selectedMode = await this.promptModeSelection(
+		const selectChannelIds = await this.promptChannelList(
 			interaction,
 			thread,
 			user,
 		);
 
-		const selectChannelIds = await this.promptChannelList(
+		const selectedMode = await this.promptModeSelection(
 			interaction,
 			thread,
 			user,
@@ -163,7 +150,7 @@ export class ReservationCommand extends Subcommand {
 							// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
 							`예약 메시지가 성공적으로 추가되었습니다! (3초 후 Thread 가 닫힙니다.)`,
 						)
-						.setColor("Green"),
+						.setColor(Colors.Green),
 				],
 			}),
 			interaction.editReply({
@@ -174,7 +161,7 @@ export class ReservationCommand extends Subcommand {
 							// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
 							`예약 메시지가 성공적으로 추가되었습니다! (ID: 테스트)`,
 						)
-						.setColor("Green"),
+						.setColor(Colors.Green),
 				],
 			}),
 		]);
@@ -317,7 +304,7 @@ export class ReservationCommand extends Subcommand {
 						.setDescription(
 							`ID가 "${reservationId}"인 예약 메시지가 성공적으로 제거되었습니다.`,
 						)
-						.setColor("Green"),
+						.setColor(Colors.Green),
 				],
 				ephemeral: true,
 			});
@@ -329,7 +316,7 @@ export class ReservationCommand extends Subcommand {
 						.setDescription(
 							`ID가 "${reservationId}"인 예약 메시지를 찾을 수 없습니다.`,
 						)
-						.setColor("Red"),
+						.setColor(Colors.Red),
 				],
 				ephemeral: true,
 			});
@@ -356,7 +343,7 @@ export class ReservationCommand extends Subcommand {
 					new EmbedBuilder()
 						.setTitle("📭 예약 메시지 없음")
 						.setDescription("등록된 예약 메시지가 없습니다.")
-						.setColor("Blue"),
+						.setColor(Colors.Red),
 				],
 				ephemeral: true,
 			});
@@ -415,76 +402,56 @@ export class ReservationCommand extends Subcommand {
 		thread: PrivateThreadChannel,
 		user: User,
 	) {
-		const accessibleChannels = thread.guild.channels.cache.filter(
-			(channel): channel is TextChannel =>
-				channel.type === ChannelType.GuildText &&
-				(channel
-					.permissionsFor(user.id)
-					?.has(PermissionsBitField.Flags.SendMessages) ??
-					false),
-		);
-
-		const options = [...accessibleChannels.values()]
-			.slice(0, 25)
-			.map((channel) => ({
-				label: channel.name,
-				value: channel.id,
-			}));
-
 		const selectMenu =
-			new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-				new StringSelectMenuBuilder()
-					.setCustomId(RESERVATION.SELECT_MENU)
+			new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+				new ChannelSelectMenuBuilder()
+					.setCustomId("channel-select")
 					.setPlaceholder("메시지를 보낼 채널을 선택해주세요.")
-					.addOptions(options)
-					.setMinValues(1)
-					.setMaxValues(options.length),
+					.setChannelTypes(ChannelType.GuildText)
+					.setMinValues(1),
 			);
 
 		const embed = new EmbedBuilder()
 			.setTitle("📅 예약 메시지 추가")
 			.setDescription("메시지를 보낼 채널을 선택해주세요.")
-			.setColor("Blue");
+			.setColor(Colors.Blue);
 
 		const message = await thread.send({
 			embeds: [embed],
 			components: [selectMenu],
 		});
 
-		const collector = thread.createMessageComponentCollector({
-			componentType: ComponentType.StringSelect,
-			filter: (i) => i.customId === RESERVATION.SELECT_MENU,
-			time: TIMEOUT,
-		});
+		try {
+			const response = await collectMessageComponent({
+				message,
+				componentType: ComponentType.ChannelSelect,
+				customId: "channel-select",
+				user,
+				timeout: TIMEOUT,
+			})
 
-		const selectMenuInteraction = await new Promise<
-			StringSelectMenuInteraction | undefined
-		>((resolve) => {
-			collector.on("collect", (i) => {
-				if (i.user.id === user.id) {
-					collector.stop();
-					resolve(i);
-				}
-			});
-
-			collector.on("end", (_, reason) => {
-				if (reason !== "user") resolve(undefined);
-			});
-		});
-
-		await message.delete();
-
-		if (isUndefined(selectMenuInteraction)) {
-			await this.closePromptTimeout(
-				interaction,
-				thread,
-				"⏳ 시간 초과",
-				"시간이 초과되었습니다. 다시 시도해주세요.",
-			);
-			return "Unreachable Code";
+			message.edit({
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✅ 채널 선택 완료")
+						.setDescription("채널이 성공적으로 선택되었습니다.")
+						.setColor(Colors.Green),
+				],
+			})
+			return response;
+		} catch (error) {
+			if (isInteractionFailedError(error)) {
+				message.edit({
+					content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
+					embeds: [
+						new EmbedBuilder()
+							.setTitle("❌ 채널 선택 오류")
+							.setDescription(`채널 선택 중 오류가 발생했습니다. (사유 : ${error.type})`)
+							.setColor(Colors.Red),
+					],	
+				})
+			}
 		}
-
-		return selectMenuInteraction.values;
 	}
 
 	private async promptDateTime(
@@ -611,7 +578,7 @@ export class ReservationCommand extends Subcommand {
 				new EmbedBuilder()
 					.setTitle("📋 메시지 유형 선택")
 					.setDescription("예약 메시지 또는 단일 메시지 중 하나를 선택하세요.")
-					.setColor("Blue"),
+					.setColor(Colors.Blue),
 			],
 			components: [actionRow],
 		});
