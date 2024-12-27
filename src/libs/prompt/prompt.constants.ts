@@ -4,8 +4,3 @@ export enum InteractionEndReason {
 	NO_RESPONSE = "no_response",
 	SUCCESS = "success",
 }
-
-export type InteractionFailedReason = Exclude<
-	InteractionEndReason,
-	InteractionEndReason.SUCCESS
->;
