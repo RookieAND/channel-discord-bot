@@ -1,5 +1,5 @@
 import type { Cron } from "@sapphire/time-utilities";
-import { type Document, Schema, model } from "mongoose";
+import { type Document, type HydratedDocument, Schema, model } from "mongoose";
 
 import {
 	type ScheduledTaskData,
@@ -15,6 +15,8 @@ export interface ScheduleTask<
 	taskType: TaskType;
 	taskData: TaskData;
 }
+
+export type ScheduleTaskDocs = HydratedDocument<ScheduleTask>;
 
 const collectionName = "schedule-tasks";
 

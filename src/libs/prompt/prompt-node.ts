@@ -1,6 +1,6 @@
 import {
 	Colors,
-	type ComponentType,
+	ComponentType,
 	type GuildTextBasedChannel,
 	type MappedComponentBuilderTypes,
 	type MappedInteractionTypes,
@@ -16,8 +16,9 @@ import { InteractionEndReason } from "./prompt.constants";
 import { isPromptFailedError, PromptFailError } from "./prompt-error";
 
 type MessagePromptRequestOptions = Omit<MessageCreateOptions, "components">;
-
-interface MessagePromptNodeProps<ChannelType extends GuildTextBasedChannel> {
+export interface MessagePromptNodeProps<
+	ChannelType extends GuildTextBasedChannel = GuildTextBasedChannel,
+> {
 	channel: ChannelType;
 	user: User;
 	requestPayload: Omit<MessageCreateOptions, "components">;
@@ -28,16 +29,17 @@ interface MessagePromptNodeProps<ChannelType extends GuildTextBasedChannel> {
 }
 
 export class MessagePromptNode<
-	ChannelType extends GuildTextBasedChannel,
-	ResponseType extends string = string,
-> {
-	private channel: ChannelType;
-	private user: User;
-	private timeout: number;
+	ResponseType extends string,
+	ChannelType extends GuildTextBasedChannel = GuildTextBasedChannel,
+>
+{
+	channel: ChannelType;
+	user: User;
+	timeout: number;
+	retry?: number;
+	private validate: (input: Message) => boolean;
 	private requestPayload: MessagePromptRequestOptions;
 	private responsePayload: MessageCreateOptions;
-	private validate: (input: Message) => boolean;
-	private retry?: number;
 	private leftAttempts: number;
 
 	constructor(props: MessagePromptNodeProps<ChannelType>) {
@@ -97,14 +99,9 @@ export class MessagePromptNode<
 
 	private async processPrompt() {
 		while (!this.retry || this.leftAttempts > 0) {
-			console.log(
-				!this.retry || this.leftAttempts > 0,
-				this.retry,
-				this.leftAttempts,
-			);
 			try {
 				const message = await this.collect();
-				const isValid = this.validate?.(message);
+				const isValid = !this.validate || this.validate(message);
 
 				if (!isValid) {
 					throw new PromptFailError({
@@ -156,42 +153,47 @@ export class MessagePromptNode<
 }
 
 interface MessageComponentPromptRequestOptions<
-	PromptComponentType extends MessageComponentType,
+	PromptComponentType extends MessageComponentType = MessageComponentType,
 > extends Omit<MessageCreateOptions, "components"> {
 	components: ActionRowBuilder<
 		MappedComponentBuilderTypes[PromptComponentType]
 	>[];
 }
 
-interface MessageComponentPromptNodeProps<
-	ChannelType extends GuildTextBasedChannel,
-	PromptComponentType extends MessageComponentType,
+export interface MessageComponentPromptNodeProps<
+	ChannelType extends GuildTextBasedChannel = GuildTextBasedChannel,
+	PromptComponentType extends MessageComponentType = MessageComponentType,
 > {
 	channel: ChannelType;
 	componentType: PromptComponentType;
 	user: User;
 	requestPayload: MessageComponentPromptRequestOptions<PromptComponentType>;
 	responsePayload: MessageCreateOptions;
-	customId: string;
+	customId: PromptComponentType extends ComponentType.Button
+		? string[]
+		: string;
 	validate?: (input: MappedInteractionTypes[PromptComponentType]) => boolean;
 	timeout: number;
 	retry?: number;
 }
 
 export class MessageComponentPromptNode<
-	ChannelType extends GuildTextBasedChannel,
-	PromptComponentType extends MessageComponentType,
 	ResponseType extends PromptComponentType extends ComponentType.Button
 		? string
 		: string[],
-> {
+	ChannelType extends GuildTextBasedChannel = GuildTextBasedChannel,
+	PromptComponentType extends MessageComponentType = MessageComponentType,
+>
+{
 	private channel: ChannelType;
 	private componentType: PromptComponentType;
 	private user: User;
 	private timeout: number;
 	private requestPayload: MessageComponentPromptRequestOptions<PromptComponentType>;
 	private responsePayload: MessageCreateOptions;
-	private customId: string;
+	private customId: PromptComponentType extends ComponentType.Button
+		? string[]
+		: string;
 	private validate?: (
 		input: MappedInteractionTypes<boolean>[PromptComponentType],
 	) => boolean;
@@ -201,9 +203,6 @@ export class MessageComponentPromptNode<
 	constructor(
 		props: MessageComponentPromptNodeProps<ChannelType, PromptComponentType>,
 	) {
-		const messageComponent = props.requestPayload.components[0].components[0];
-		messageComponent.setCustomId(props.customId);
-
 		this.channel = props.channel;
 		this.componentType = props.componentType;
 		this.user = props.user;
@@ -235,13 +234,16 @@ export class MessageComponentPromptNode<
 			componentType: this.componentType,
 			filter: (interaction) =>
 				interaction.user.id === this.user.id &&
-				interaction.customId === this.customId,
+				(this.componentType === ComponentType.Button
+					? this.customId.includes(interaction.customId)
+					: interaction.customId === this.customId),
 			time: this.timeout,
 		});
 
 		return new Promise<MappedInteractionTypes<boolean>[PromptComponentType]>(
 			(resolve, reject) => {
-				collector.on("collect", () => {
+				collector.on("collect", (interaction) => {
+					interaction.deferUpdate();
 					collector.stop(InteractionEndReason.SUCCESS);
 				});
 
@@ -280,7 +282,7 @@ export class MessageComponentPromptNode<
 		while (!this.retry || this.leftAttempts > 0) {
 			try {
 				const interaction = await this.collect();
-				const isValid = this.validate?.(interaction);
+				const isValid = !this.validate || this.validate(interaction);
 
 				if (!isValid) {
 					throw new PromptFailError({
