@@ -2,33 +2,39 @@ import { ApplyOptions } from "@sapphire/decorators";
 import {
 	isPrivateThreadChannel,
 	isTextChannel,
+	PaginatedMessage,
 } from "@sapphire/discord.js-utilities";
 import {
 	type ApplicationCommandRegistry,
 	container,
 } from "@sapphire/framework";
 import { Subcommand } from "@sapphire/plugin-subcommands";
-import dayjs from "dayjs";
 import { ChannelSelectMenuBuilder, EmbedBuilder } from "@discordjs/builders";
-import { Colors, GuildChannel, hyperlink, ThreadAutoArchiveDuration } from "discord.js";
+import dayjs from "dayjs";
 import {
 	ActionRowBuilder,
-	ButtonBuilder,
-	type ButtonInteraction,
-	ButtonStyle,
 	ChannelType,
-	type ChatInputCommandInteraction,
 	ComponentType,
-	PermissionsBitField,
+	Colors,
+	hyperlink,
+	ThreadAutoArchiveDuration,
 	type PrivateThreadChannel,
-	StringSelectMenuBuilder,
-	type StringSelectMenuInteraction,
-	type TextChannel,
 	type User,
 } from "discord.js";
-import { delay, isUndefined } from "es-toolkit";
-import { RESERVATION } from "#/constants/reservation";
-import { collectMessageComponent, isInteractionFailedError } from "#/utils/prompt";
+import { chunk, delay } from "es-toolkit";
+
+import {
+	InteractionEndReason,
+	isPromptFailedError,
+	MessageComponentPromptNode,
+	MessagePromptNode,
+	PromptFailError,
+} from "#/libs/prompt";
+import {
+	scheduleTaskRepository,
+	type ScheduleTaskDocs,
+} from "#/databases/collections/schedule-task";
+import { ScheduledTaskType } from "#/types/schedule-task.type";
 
 const TIMEOUT = 30000;
 
@@ -107,7 +113,7 @@ export class ReservationCommand extends Subcommand {
 
 		const user = interaction.user;
 		const thread = await interaction.channel.threads.create({
-			name: `${interaction.user.id}-session`,
+			name: `${interaction.user.id}-reservation-prompt-thread`,
 			autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
 			type: ChannelType.PrivateThread,
 			invitable: false,
@@ -129,160 +135,96 @@ export class ReservationCommand extends Subcommand {
 		if (!isPrivateThreadChannel(thread)) return;
 		await thread.members.add(interaction.user.id);
 
-		const selectChannelIds = await this.promptChannelList(
-			interaction,
-			thread,
-			user,
-		);
+		try {
+			const selectedChannelIds = await this.getPromptChannelList(
+				thread,
+				user,
+			).ask();
+			const title = await this.getPromptTitle(thread, user).ask();
+			const content = await this.getPromptContent(thread, user).ask();
+			const reserveDateTime = await this.getPromptDateTime(thread, user).ask();
 
-		const selectedMode = await this.promptModeSelection(
-			interaction,
-			thread,
-			user,
-		);
+			const reservationTime = dayjs(reserveDateTime, "YYYY-MM-DD HH:mm", true);
+			const taskType = ScheduledTaskType.RESERVATION_MESSAGE;
 
-		await Promise.all([
-			thread.send({
-				embeds: [
-					new EmbedBuilder()
-						.setTitle("✅ 예약 메시지 추가 완료")
-						.setDescription(
-							// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-							`예약 메시지가 성공적으로 추가되었습니다! (3초 후 Thread 가 닫힙니다.)`,
-						)
-						.setColor(Colors.Green),
-				],
-			}),
-			interaction.editReply({
-				embeds: [
-					new EmbedBuilder()
-						.setTitle("✅ 예약 메시지 추가 완료")
-						.setDescription(
-							// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-							`예약 메시지가 성공적으로 추가되었습니다! (ID: 테스트)`,
-						)
-						.setColor(Colors.Green),
-				],
-			}),
-		]);
+			const reservationDocument = await scheduleTaskRepository.create({
+				time: reservationTime.toDate(),
+				taskType,
+				taskData: {
+					title,
+					content,
+					owner: user.id,
+					channelList: selectedChannelIds,
+				},
+			});
+			container.tasks.create(
+				{
+					name: ScheduledTaskType.RESERVATION_MESSAGE,
+					payload: {
+						title,
+						content,
+						owner: user.id,
+						channelList: selectedChannelIds,
+					},
+				},
+				{
+					repeated: false,
+					delay: dayjs(reserveDateTime).diff(dayjs(), "millisecond"),
+					customJobOptions: {
+						jobId: reservationDocument.id,
+					},
+				},
+			);
 
-		await delay(3_000);
-		await thread.delete();
+			const successMessageEmbed = new EmbedBuilder()
+				.setTitle("✅ 예약 메시지 추가 완료")
+				.setDescription(
+					"예약 메시지가 성공적으로 추가되었습니다! (3초 후 Thread 가 닫힙니다.)",
+				)
+				.addFields([
+					{
+						name: "발송 시간",
+						value: reservationTime.format("YYYY/MM/DD HH시 mm분"),
+					},
+					{
+						name: "명령어 ID",
+						value: reservationDocument.id,
+					},
+				])
+				.setColor(Colors.Green);
 
-		// if (!selectMenuInteraction) {
-		// 	await interaction.editReply({
-		// 		content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-		// 		embeds: [
-		// 			new EmbedBuilder()
-		// 				.setTitle("⏳ 시간 초과")
-		// 				.setDescription("시간이 초과되었습니다. 다시 시도해주세요.")
-		// 				.setColor("Yellow"),
-		// 		],
-		// 	});
-		// 	return;
-		// }
-
-		// const selectedChannelIds = selectMenuInteraction.values;
-		// const selectedChannels = interaction.guild.channels.cache.filter(
-		// 	(channel) => selectedChannelIds.includes(channel.id),
-		// );
-
-		// if (!selectedChannels.size) {
-		// 	await interaction.editReply({
-		// 		content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-		// 		embeds: [
-		// 			new EmbedBuilder()
-		// 				.setTitle("❌ 채널 없음")
-		// 				.setDescription("선택한 채널을 찾을 수 없습니다.")
-		// 				.setColor("Red"),
-		// 		],
-		// 	});
-		// 	return;
-		// }
-
-		// const titleText = await this.promptTitle(interaction);
-
-		// if (!titleText || titleText.length > 100) {
-		// 	await interaction.editReply({
-		// 		content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-		// 		embeds: [
-		// 			new EmbedBuilder()
-		// 				.setTitle("❌ 메시지 오류")
-		// 				.setDescription(
-		// 					"본문이 비어있거나 100자를 초과했습니다. 다시 시도해주세요.",
-		// 				)
-		// 				.setColor("Red"),
-		// 		],
-		// 	});
-		// 	return;
-		// }
-
-		// const messageText = await this.promptContent(interaction);
-
-		// if (!messageText || messageText.length > 2000) {
-		// 	await interaction.editReply({
-		// 		content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-		// 		embeds: [
-		// 			new EmbedBuilder()
-		// 				.setTitle("❌ 메시지 오류")
-		// 				.setDescription(
-		// 					"메시지가 비어있거나 2000자를 초과했습니다. 다시 시도해주세요.",
-		// 				)
-		// 				.setColor("Red"),
-		// 		],
-		// 	});
-		// 	return;
-		// }
-
-		// const dateTime = await this.promptDateTime(interaction);
-
-		// if (!dateTime) {
-		// 	await interaction.editReply({
-		// 		content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-		// 		embeds: [
-		// 			new EmbedBuilder()
-		// 				.setTitle("⏳ 시간 초과")
-		// 				.setDescription("시간이 초과되었습니다. 다시 시도해주세요.")
-		// 				.setColor("Yellow"),
-		// 		],
-		// 	});
-		// 	return;
-		// }
-
-		// const recurring = await this.promptRecurringOptions(interaction);
-
-		// if (!recurring) {
-		// 	await interaction.editReply({
-		// 		content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-		// 		embeds: [
-		// 			new EmbedBuilder()
-		// 				.setTitle("⏳ 시간 초과")
-		// 				.setDescription("시간이 초과되었습니다. 다시 시도해주세요.")
-		// 				.setColor("Yellow"),
-		// 		],
-		// 	});
-		// 	return;
-		// }
-
-		// const scheduledTask = await container.tasks.create({
-		// 	name: ScheduledTaskType.RESERVATION_MESSAGE,
-		// 	payload: {
-		// 		channelList: selectedChannelIds,
-		// 		message: messageText,
-		// 		owner: interaction.user.id,
-		// 	},
-		// });
-
-		// await interaction.editReply({
-		// 	embeds: [
-		// 		new EmbedBuilder()
-		// 			.setTitle("✅ 예약 메시지 추가 완료")
-		// 			.setDescription(
-		// 				`예약 메시지가 성공적으로 추가되었습니다! (ID: ${scheduledTask.id})`,
-		// 			)
-		// 			.setColor("Green"),
-		// 	],
-		// });
+			await thread.send({
+				content: "예약 메시지가 성공적으로 추가되었습니다.",
+				embeds: [successMessageEmbed],
+			});
+			await interaction.editReply({
+				content: "예약 메시지가 성공적으로 추가되었습니다.",
+				embeds: [successMessageEmbed],
+			});
+		} catch (error) {
+			if (isPromptFailedError(error)) {
+				await thread.send({
+					embeds: [
+						new EmbedBuilder()
+							.setTitle(error.title)
+							.setDescription(error.description)
+							.setColor(Colors.Red),
+					],
+				});
+			} else {
+				await thread.send({
+					embeds: [
+						new EmbedBuilder()
+							.setTitle("시스템 오류")
+							.setDescription("문답 진행 중 알 수 없는 오류가 발생했습니다.")
+							.setColor(Colors.Red),
+					],
+				});
+			}
+		} finally {
+			await delay(3_000);
+			await thread.delete();
+		}
 	}
 
 	/**
@@ -294,21 +236,9 @@ export class ReservationCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) return;
 
 		const reservationId = interaction.options.getString("id", true);
-
-		try {
-			await container.tasks.delete(reservationId);
-			await interaction.reply({
-				embeds: [
-					new EmbedBuilder()
-						.setTitle("✅ 제거 완료")
-						.setDescription(
-							`ID가 "${reservationId}"인 예약 메시지가 성공적으로 제거되었습니다.`,
-						)
-						.setColor(Colors.Green),
-				],
-				ephemeral: true,
-			});
-		} catch {
+		const reservationDocument =
+			await scheduleTaskRepository.findById(reservationId);
+		if (!reservationDocument) {
 			await interaction.reply({
 				embeds: [
 					new EmbedBuilder()
@@ -320,7 +250,22 @@ export class ReservationCommand extends Subcommand {
 				],
 				ephemeral: true,
 			});
+			return;
 		}
+
+		await scheduleTaskRepository.removeById(reservationId);
+		await container.tasks.delete(reservationId);
+		await interaction.reply({
+			embeds: [
+				new EmbedBuilder()
+					.setTitle("✅ 명령어 제거 완료")
+					.setDescription(
+						`ID가 : "${reservationId}" 예약 메시지가 성공적으로 제거되었습니다.`,
+					)
+					.setColor(Colors.Green),
+			],
+			ephemeral: true,
+		});
 	}
 
 	/**
@@ -329,376 +274,193 @@ export class ReservationCommand extends Subcommand {
 	public async chatInputList(
 		interaction: Subcommand.ChatInputCommandInteraction,
 	) {
-		const tasks = await container.tasks.list({
-			types: ["active", "waiting"],
-		});
+		const availableReservationTask =
+			await scheduleTaskRepository.findAvailableTaskByType(
+				ScheduledTaskType.RESERVATION_MESSAGE,
+			);
 
-		const userTasks = tasks.filter(
-			(task) => (task as any).payload.owner === interaction.user.id,
-		);
-
-		if (userTasks.length === 0) {
-			await interaction.reply({
+		const paginatedMessage = new PaginatedMessage({
+			template: {
+				content: "등록된 예약 메세지를 보여줍니다",
 				embeds: [
 					new EmbedBuilder()
-						.setTitle("📭 예약 메시지 없음")
-						.setDescription("등록된 예약 메시지가 없습니다.")
-						.setColor(Colors.Red),
+						.setColor(Colors.Blue)
+						.setTitle("📋 예약 메시지 목록"),
 				],
-				ephemeral: true,
-			});
-			return;
+			},
+		});
+
+		const formatReservationTaskInformation = (
+			reservationDocs: ScheduleTaskDocs,
+		) =>
+			`ID : ${reservationDocs.id} (발송 시간 : ${dayjs(reservationDocs.time).format("YYYY/MM/DD HH시 mm분")})`;
+
+		for (const page of chunk(availableReservationTask, 10)) {
+			paginatedMessage.addPageEmbed((embed) =>
+				embed.setDescription(
+					page
+						.map((reservationDocs) =>
+							formatReservationTaskInformation(reservationDocs),
+						)
+						.join("\n"),
+				),
+			);
 		}
 
-		const embed = new EmbedBuilder()
-			.setTitle("📋 예약 메시지 목록")
-			.setDescription("아래는 등록된 예약 메시지 목록입니다:")
-			.setColor("Blue")
-			.setTimestamp();
-
-		for (const task of userTasks) {
-			embed.addFields([
-				{
-					name: `🆔 ID: ${task.id}`,
-					value: `💬 **Message**: ${(task as any).payload.message}\n⏰ **Time**: ${dayjs(
-						(task as any).options.delay,
-					).format("YYYY-MM-DD HH:mm")}`,
-					inline: false,
-				},
-			]);
-		}
-
-		await interaction.reply({
-			embeds: [embed],
-			ephemeral: true,
-		});
-	}
-
-	private async closePromptTimeout(
-		interaction: ChatInputCommandInteraction,
-		thread: PrivateThreadChannel,
-		title: string,
-		reason: string,
-	) {
-		await interaction.editReply({
-			content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-			embeds: [
-				new EmbedBuilder()
-					.setTitle(title)
-					.setDescription(`${reason}. 3초 후 쓰레드가 닫힙니다.`)
-					.setColor("Red"),
-			],
-		});
-		await delay(3_000);
-		await thread.delete();
-		await interaction.deleteReply();
+		await paginatedMessage.run(interaction);
 	}
 
 	/**
 	 * 채널 목록을 받는 Select Menu 생성
 	 */
-	private async promptChannelList(
-		interaction: ChatInputCommandInteraction,
-		thread: PrivateThreadChannel,
-		user: User,
-	) {
-		const selectMenu =
-			new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
-				new ChannelSelectMenuBuilder()
-					.setCustomId("channel-select")
-					.setPlaceholder("메시지를 보낼 채널을 선택해주세요.")
-					.setChannelTypes(ChannelType.GuildText)
-					.setMinValues(1),
-			);
-
-		const embed = new EmbedBuilder()
-			.setTitle("📅 예약 메시지 추가")
-			.setDescription("메시지를 보낼 채널을 선택해주세요.")
-			.setColor(Colors.Blue);
-
-		const message = await thread.send({
-			embeds: [embed],
-			components: [selectMenu],
-		});
-
-		try {
-			const response = await collectMessageComponent({
-				message,
-				componentType: ComponentType.ChannelSelect,
-				customId: "channel-select",
-				user,
-				timeout: TIMEOUT,
-			})
-
-			message.edit({
+	private getPromptChannelList(thread: PrivateThreadChannel, user: User) {
+		const promptNode = new MessageComponentPromptNode({
+			channel: thread,
+			componentType: ComponentType.ChannelSelect,
+			user,
+			timeout: 30_000,
+			requestPayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("📅 예약 메시지 추가")
+						.setDescription("메시지를 보낼 채널을 선택해주세요.")
+						.setColor(Colors.Blue),
+				],
+				components: [
+					new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+						new ChannelSelectMenuBuilder()
+							.setCustomId("channel-select")
+							.setPlaceholder("메시지를 보낼 채널을 선택해주세요.")
+							.setChannelTypes(ChannelType.GuildText)
+							.setMinValues(1)
+							.setMaxValues(10),
+					),
+				],
+			},
+			responsePayload: {
 				embeds: [
 					new EmbedBuilder()
 						.setTitle("✅ 채널 선택 완료")
 						.setDescription("채널이 성공적으로 선택되었습니다.")
 						.setColor(Colors.Green),
 				],
-			})
-			return response;
-		} catch (error) {
-			if (isInteractionFailedError(error)) {
-				message.edit({
-					content: "명령어를 실행하는 과정에서 오류가 발생했습니다.",
-					embeds: [
-						new EmbedBuilder()
-							.setTitle("❌ 채널 선택 오류")
-							.setDescription(`채널 선택 중 오류가 발생했습니다. (사유 : ${error.type})`)
-							.setColor(Colors.Red),
-					],	
-				})
-			}
-		}
+			},
+			customId: "channel-select",
+		});
+
+		return promptNode;
 	}
 
-	private async promptDateTime(
-		interaction: ChatInputCommandInteraction<"cached">,
-	) {
-		if (!interaction.channel) return;
-		await interaction.reply({
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("📅 날짜와 시간 입력")
-					.setDescription(
-						"날짜와 시간을 `YYYY-MM-DD HH:mm` 형식으로 입력하세요.",
-					)
-					.setColor("Yellow"),
-			],
-		});
-
-		const collected = await interaction.channel.awaitMessages({
-			filter: (msg) => msg.author.id === interaction.user.id,
-			max: 1,
-			time: TIMEOUT,
-		});
-
-		return collected.first()?.content ?? null;
-	}
-
-	private async promptRecurringOptions(
-		interaction: ChatInputCommandInteraction<"cached">,
-	) {
-		if (!interaction.channel) return;
-
-		const selectMenu =
-			new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-				new StringSelectMenuBuilder()
-					.setCustomId("day-select")
-					.setPlaceholder("요일을 선택하세요.")
-					.addOptions([
-						{ label: "월", value: "monday" },
-						{ label: "화", value: "tuesday" },
-						{ label: "수", value: "wednesday" },
-						{ label: "목", value: "thursday" },
-						{ label: "금", value: "friday" },
-						{ label: "토", value: "saturday" },
-						{ label: "일", value: "sunday" },
-						{ label: "매일", value: "daily" },
-					]),
-			);
-
-		const embed = new EmbedBuilder()
-			.setTitle("📅 예약 메시지 추가")
-			.setDescription("메시지를 보낼 채널을 선택해주세요.")
-			.setColor("Blue");
-
-		await interaction.reply({
-			embeds: [embed],
-			components: [selectMenu],
-			ephemeral: true,
-		});
-
-		const collector = interaction.channel.createMessageComponentCollector({
-			componentType: ComponentType.StringSelect,
-			filter: (i) => i.customId === RESERVATION.SELECT_MENU,
-			time: TIMEOUT,
-		});
-
-		const selectMenuInteraction =
-			await new Promise<StringSelectMenuInteraction | null>((resolve) => {
-				collector.on("collect", (i) => {
-					if (i.user.id === interaction.user.id) {
-						collector.stop();
-						resolve(i);
-					}
-				});
-
-				collector.on("end", (_, reason) => {
-					if (reason !== "user") resolve(null);
-				});
-			});
-
-		return selectMenuInteraction;
-	}
-
-	private async promptTitle(
-		interaction: ChatInputCommandInteraction<"cached">,
-	) {
-		if (!interaction.channel) return;
-		const message = await interaction.editReply({
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("✏️ 메시지 제목 입력")
-					.setDescription("전송할 메시지 제목을 입력하세요.")
-					.setColor("Blue"),
-			],
-		});
-
-		const collected = await interaction.channel.awaitMessages({
-			filter: (msg) => msg.author.id === interaction.user.id,
-			max: 1,
-			time: TIMEOUT,
-		});
-
-		await message.delete();
-		return collected.first()?.content ?? null;
-	}
-
-	private async promptModeSelection(
-		interaction: ChatInputCommandInteraction,
-		thread: PrivateThreadChannel,
-		user: User,
-	) {
-		const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-			new ButtonBuilder()
-				.setCustomId("reservation-message")
-				.setLabel("예약 메시지")
-				.setStyle(ButtonStyle.Primary),
-			new ButtonBuilder()
-				.setCustomId("single-message")
-				.setLabel("단일 메시지")
-				.setStyle(ButtonStyle.Secondary),
-		);
-
-		const message = await thread.send({
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("📋 메시지 유형 선택")
-					.setDescription("예약 메시지 또는 단일 메시지 중 하나를 선택하세요.")
-					.setColor(Colors.Blue),
-			],
-			components: [actionRow],
-		});
-
-		const collector = message.createMessageComponentCollector({
-			componentType: ComponentType.Button,
-			filter: (i) =>
-				["reservation-message", "single-message"].includes(i.customId),
-			time: TIMEOUT,
-			max: 1,
-		});
-
-		const selectModeInteraction = await new Promise<
-			ButtonInteraction | undefined
-		>((resolve) => {
-			collector.on("collect", (i) => {
-				if (i.user.id === user.id) {
-					collector.stop();
-					resolve(i);
+	private getPromptDateTime(thread: PrivateThreadChannel, user: User) {
+		const reserveDateTimePrompt = new MessagePromptNode({
+			channel: thread,
+			user,
+			timeout: TIMEOUT,
+			requestPayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✏️ 메시지 전송 일자 입력")
+						.setDescription(
+							"날짜와 시간을 `YYYY-MM-DD HH:mm` 형식으로 입력하세요.",
+						)
+						.setColor(Colors.Blue),
+				],
+			},
+			responsePayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✅ 전송 시간 설정 완료")
+						.setDescription("메시지를 전송할 시간을 성공적으로 설정했습니다.")
+						.setColor(Colors.Green),
+				],
+			},
+			validate: (message) => {
+				if (!dayjs(message.content, "YYYY-MM-DD HH:mm", true).isValid()) {
+					throw new PromptFailError({
+						title: "❌ 시간 입력 오류",
+						description: "YYYY-MM-DD HH:mm 형식에 맞춰 시간을 입력해주세요.",
+						type: InteractionEndReason.INVALID_RESPONSE,
+					});
 				}
-			});
-
-			collector.on("end", (_, reason) => {
-				if (reason !== "user") resolve(undefined);
-			});
+				return true;
+			},
+			retry: 2,
 		});
 
-		await message.delete();
-
-		if (isUndefined(selectModeInteraction)) {
-			await this.closePromptTimeout(
-				interaction,
-				thread,
-				"⏳ 시간 초과",
-				"시간이 초과되었습니다. 다시 시도해주세요. (3초 후 Thread 가 닫힙니다.)",
-			);
-			return;
-		}
-
-		await selectModeInteraction.reply({
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("✅ 메시지 유형 선택 완료")
-					.setDescription("메시지 유형이 성공적으로 선택되었습니다.")
-					.setColor("Green"),
-			],
-		});
-
-		return selectModeInteraction.customId;
+		return reserveDateTimePrompt;
 	}
 
-	private async promptContent(
-		interaction: ChatInputCommandInteraction<"cached">,
-	) {
-		if (!interaction.channel) return;
-		await interaction.channel.send({
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("📜 메시지 내용 입력")
-					.setDescription("전송할 메시지 내용을 입력하세요.")
-					.setColor("Yellow"),
-			],
+	private getPromptTitle(thread: PrivateThreadChannel, user: User) {
+		const titlePrompt = new MessagePromptNode({
+			channel: thread,
+			user,
+			timeout: TIMEOUT,
+			requestPayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✏️ 메시지 제목 입력")
+						.setDescription("전송할 메시지 제목을 입력하세요.")
+						.setColor(Colors.Blue),
+				],
+			},
+			responsePayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✅ 메시지 제목 입력 완료")
+						.setDescription("메시지 제목이 성공적으로 입력되었습니다.")
+						.setColor(Colors.Green),
+				],
+			},
+			validate: (message) => {
+				if (message.content.length > 100) {
+					throw new PromptFailError({
+						title: "❌ 메시지 오류",
+						description: "메시지 제목이 100자를 초과했습니다.",
+						type: InteractionEndReason.INVALID_RESPONSE,
+					});
+				}
+				return true;
+			},
+			retry: 2,
 		});
 
-		const collected = await interaction.channel.awaitMessages({
-			filter: (msg) => msg.author.id === interaction.user.id,
-			max: 1,
-			time: TIMEOUT,
-		});
-
-		return collected.first()?.content ?? null;
+		return titlePrompt;
 	}
 
-	private async promptRoleSelection(
-		interaction: ChatInputCommandInteraction<"cached">,
-	) {
-		if (!interaction.channel) return;
-
-		const roles = interaction.channel.guild.roles.cache.map((role) => ({
-			label: role.name,
-			value: role.id,
-		}));
-
-		const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-			new StringSelectMenuBuilder()
-				.setCustomId("role-select")
-				.setPlaceholder("멘션할 역할을 선택하세요.")
-				.addOptions(roles),
-		);
-
-		await interaction.channel.send({
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("🎭 역할 선택")
-					.setDescription("멘션할 역할을 선택하세요.")
-					.setColor("Purple"),
-			],
-			components: [row],
+	private getPromptContent(thread: PrivateThreadChannel, user: User) {
+		const contentPrompt = new MessagePromptNode({
+			channel: thread,
+			user,
+			timeout: TIMEOUT,
+			requestPayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✏️ 메시지 내용 입력")
+						.setDescription("전송할 메시지 내용을 입력하세요.")
+						.setColor(Colors.Blue),
+				],
+			},
+			responsePayload: {
+				embeds: [
+					new EmbedBuilder()
+						.setTitle("✅ 메시지 내용 입력 완료")
+						.setDescription("메시지 내용이 성공적으로 입력되었습니다.")
+						.setColor(Colors.Green),
+				],
+			},
+			validate: (message) => {
+				if (message.content.length > 2000) {
+					throw new PromptFailError({
+						title: "❌ 메시지 오류",
+						description: "메시지 내용이 2000자를 초과했습니다.",
+						type: InteractionEndReason.INVALID_RESPONSE,
+					});
+				}
+				return true;
+			},
+			retry: 2,
 		});
 
-		const collector = interaction.channel.createMessageComponentCollector({
-			componentType: ComponentType.StringSelect,
-			filter: (i) => i.customId === RESERVATION.SELECT_MENU,
-			time: TIMEOUT,
-		});
-
-		const selectMenuInteraction =
-			await new Promise<StringSelectMenuInteraction | null>((resolve) => {
-				collector.on("collect", (i) => {
-					if (i.user.id === interaction.user.id) {
-						collector.stop();
-						resolve(i);
-					}
-				});
-
-				collector.on("end", (_, reason) => {
-					if (reason !== "user") resolve(null);
-				});
-			});
-
-		return selectMenuInteraction;
+		return contentPrompt;
 	}
 }
