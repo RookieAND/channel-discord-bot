@@ -15,17 +15,20 @@ import { isEmpty } from "es-toolkit/compat";
 import { InteractionEndReason } from "./prompt.constants";
 import { isPromptFailedError, PromptFailError } from "./prompt-error";
 
+export interface BasePromptNodeProps<ChannelType extends GuildTextBasedChannel> {
+	channel: ChannelType;
+	user: User;
+	timeout: number;
+	retry?: number;
+}
+
 type MessagePromptRequestOptions = Omit<MessageCreateOptions, "components">;
 export interface MessagePromptNodeProps<
 	ChannelType extends GuildTextBasedChannel = GuildTextBasedChannel,
-> {
-	channel: ChannelType;
-	user: User;
+> extends BasePromptNodeProps<ChannelType> {
 	requestPayload: Omit<MessageCreateOptions, "components">;
 	responsePayload: MessageCreateOptions;
-	validate: (input: Message) => boolean;
-	timeout: number;
-	retry?: number;
+	validate?: (input: Message) => boolean;
 }
 
 export class MessagePromptNode<
@@ -37,7 +40,7 @@ export class MessagePromptNode<
 	user: User;
 	timeout: number;
 	retry?: number;
-	private validate: (input: Message) => boolean;
+	private validate?: (input: Message) => boolean;
 	private requestPayload: MessagePromptRequestOptions;
 	private responsePayload: MessageCreateOptions;
 	private leftAttempts: number;
@@ -163,18 +166,14 @@ interface MessageComponentPromptRequestOptions<
 export interface MessageComponentPromptNodeProps<
 	ChannelType extends GuildTextBasedChannel = GuildTextBasedChannel,
 	PromptComponentType extends MessageComponentType = MessageComponentType,
-> {
-	channel: ChannelType;
+> extends BasePromptNodeProps<ChannelType> {
 	componentType: PromptComponentType;
-	user: User;
 	requestPayload: MessageComponentPromptRequestOptions<PromptComponentType>;
 	responsePayload: MessageCreateOptions;
 	customId: PromptComponentType extends ComponentType.Button
 		? string[]
 		: string;
-	validate?: (input: MappedInteractionTypes[PromptComponentType]) => boolean;
-	timeout: number;
-	retry?: number;
+	validate?: (input: MappedInteractionTypes<boolean>[PromptComponentType]) => boolean;
 }
 
 export class MessageComponentPromptNode<

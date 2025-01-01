@@ -1,6 +1,5 @@
 import { ApplyOptions } from "@sapphire/decorators";
 import {
-	isPrivateThreadChannel,
 	isTextChannel,
 	PaginatedMessage,
 } from "@sapphire/discord.js-utilities";
@@ -9,7 +8,12 @@ import {
 	container,
 } from "@sapphire/framework";
 import { Subcommand } from "@sapphire/plugin-subcommands";
-import { ChannelSelectMenuBuilder, EmbedBuilder } from "@discordjs/builders";
+import {
+	ButtonBuilder,
+	ChannelSelectMenuBuilder,
+	EmbedBuilder,
+
+} from "@discordjs/builders";
 import dayjs from "dayjs";
 import {
 	ActionRowBuilder,
@@ -17,15 +21,20 @@ import {
 	ComponentType,
 	Colors,
 	hyperlink,
-	ThreadAutoArchiveDuration,
 	type PrivateThreadChannel,
 	type User,
+	ButtonStyle,
 } from "discord.js";
-import { chunk, delay } from "es-toolkit";
+import { chunk } from "es-toolkit";
 
 import {
+	channelOption,
+	titleOption,
+	contentOption,
+	dateTimeOption,
+} from "#/constants/reservation";
+import {
 	InteractionEndReason,
-	isPromptFailedError,
 	MessageComponentPromptNode,
 	MessagePromptNode,
 	PromptFailError,
@@ -35,6 +44,7 @@ import {
 	type ScheduleTaskDocs,
 } from "#/databases/collections/schedule-task";
 import { ScheduledTaskType } from "#/types/schedule-task.type";
+import { PromptThreadManager } from "#/libs/prompt/prompt-thread";
 
 const TIMEOUT = 30000;
 
@@ -112,119 +122,105 @@ export class ReservationCommand extends Subcommand {
 		}
 
 		const user = interaction.user;
-		const thread = await interaction.channel.threads.create({
-			name: `${interaction.user.id}-reservation-prompt-thread`,
-			autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
-			type: ChannelType.PrivateThread,
-			invitable: false,
-		});
-
-		await interaction.reply({
-			content: "쓰레드가 개설되었습니다. 내부에서 명령어 등록을 진행해주세요.",
-			embeds: [
-				new EmbedBuilder()
-					.setTitle("📋 메세지 등록 진행")
-					.setDescription(
-						`${hyperlink("개설된 스레드", thread.url)} 내에서 메세지 등록을 진행해주세요.`,
-					)
-					.setColor(Colors.Blue),
-			],
-			ephemeral: true,
-		});
-
-		if (!isPrivateThreadChannel(thread)) return;
-		await thread.members.add(interaction.user.id);
-
-		try {
-			const selectedChannelIds = await this.getPromptChannelList(
-				thread,
-				user,
-			).ask();
-			const title = await this.getPromptTitle(thread, user).ask();
-			const content = await this.getPromptContent(thread, user).ask();
-			const reserveDateTime = await this.getPromptDateTime(thread, user).ask();
-
-			const reservationTime = dayjs(reserveDateTime, "YYYY-MM-DD HH:mm", true);
-			const taskType = ScheduledTaskType.RESERVATION_MESSAGE;
-
-			const reservationDocument = await scheduleTaskRepository.create({
-				time: reservationTime.toDate(),
-				taskType,
-				taskData: {
-					title,
-					content,
+		const promptManager = new PromptThreadManager<{
+			channels: string[];
+			title: string;
+			content: string;
+			dateTime: string;
+		}>({
+			user,
+			channel: interaction.channel,
+			promptName: "reservation-prompt",
+			promptTimeout: 30_000,
+			promptOptions: {
+				channels: channelOption,
+				title: titleOption,
+				content: contentOption,
+				dateTime: dateTimeOption,
+			},
+			onPromptStart: async (thread) => {
+				await interaction.reply({
+					content: "쓰레드가 개설되었습니다. 내부에서 문답을 진행해주세요.",
+					components: [
+						new ActionRowBuilder<ButtonBuilder>().addComponents(
+							new ButtonBuilder()
+								.setLabel("쓰레드로 이동하기")
+								.setStyle(ButtonStyle.Link)
+								.setURL(thread.url),
+						),
+					],
+					embeds: [
+						new EmbedBuilder()
+							.setTitle("📋 메세지 등록 진행")
+							.setDescription(
+								`${hyperlink(
+									"개설된 스레드",
+									thread.url,
+								)} 내에서 메시지 등록을 진행해주세요.`,
+							)
+							.setColor(Colors.Blue),
+					],
+					ephemeral: true,
+				});
+			},
+			onPromptEnd: async (thread, context) => {
+				const reservationTime = dayjs(
+					context.dateTime,
+					"YYYY-MM-DD HH:mm",
+					true,
+				);
+				const taskData = {
+					title: context.title,
+					content: context.content,
 					owner: user.id,
-					channelList: selectedChannelIds,
-				},
-			});
-			container.tasks.create(
-				{
-					name: ScheduledTaskType.RESERVATION_MESSAGE,
-					payload: {
-						title,
-						content,
-						owner: user.id,
-						channelList: selectedChannelIds,
-					},
-				},
-				{
-					repeated: false,
-					delay: dayjs(reserveDateTime).diff(dayjs(), "millisecond"),
-					customJobOptions: {
-						jobId: reservationDocument.id,
-					},
-				},
-			);
+					channelList: context.channels,
+				};
 
-			const successMessageEmbed = new EmbedBuilder()
-				.setTitle("✅ 예약 메시지 추가 완료")
-				.setDescription(
-					"예약 메시지가 성공적으로 추가되었습니다! (3초 후 Thread 가 닫힙니다.)",
-				)
-				.addFields([
+				const reservationDocument = await scheduleTaskRepository.create({
+					time: reservationTime.toDate(),
+					taskType: ScheduledTaskType.RESERVATION_MESSAGE,
+					taskData,
+				});
+
+				container.tasks.create(
 					{
-						name: "발송 시간",
-						value: reservationTime.format("YYYY/MM/DD HH시 mm분"),
+						name: ScheduledTaskType.RESERVATION_MESSAGE,
+						payload: taskData,
 					},
 					{
-						name: "명령어 ID",
-						value: reservationDocument.id,
+						repeated: false,
+						delay: reservationTime.diff(dayjs(), "millisecond"),
+						customJobOptions: {
+							jobId: reservationDocument.id,
+						},
 					},
-				])
-				.setColor(Colors.Green);
+				);
 
-			await thread.send({
-				content: "예약 메시지가 성공적으로 추가되었습니다.",
-				embeds: [successMessageEmbed],
-			});
-			await interaction.editReply({
-				content: "예약 메시지가 성공적으로 추가되었습니다.",
-				embeds: [successMessageEmbed],
-			});
-		} catch (error) {
-			if (isPromptFailedError(error)) {
-				await thread.send({
+				const successMessageCreationOption = {
+					components: [],
 					embeds: [
 						new EmbedBuilder()
-							.setTitle(error.title)
-							.setDescription(error.description)
-							.setColor(Colors.Red),
+							.setTitle("✅ 예약 메시지 추가 완료")
+							.setDescription("예약 메시지가 성공적으로 추가되었습니다!")
+							.addFields([
+								{
+									name: "발송 시간",
+									value: reservationTime.format("YYYY/MM/DD HH:mm"),
+								},
+								{ name: "명령어 ID", value: reservationDocument.id },
+							])
+							.setColor(Colors.Green),
 					],
-				});
-			} else {
-				await thread.send({
-					embeds: [
-						new EmbedBuilder()
-							.setTitle("시스템 오류")
-							.setDescription("문답 진행 중 알 수 없는 오류가 발생했습니다.")
-							.setColor(Colors.Red),
-					],
-				});
-			}
-		} finally {
-			await delay(3_000);
-			await thread.delete();
-		}
+				};
+
+				await Promise.all([
+					interaction.editReply(successMessageCreationOption),
+					thread.send(successMessageCreationOption),
+				]);
+			},
+		});
+
+		await promptManager.start();
 	}
 
 	/**
